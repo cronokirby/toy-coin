@@ -72,6 +72,14 @@ impl PrivateKey {
         Scalar::random(&mut HashRng::new(hasher))
     }
 
+    pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
+        let mut key = PrivateKey {
+            bytes: [0; PRIVATE_KEY_SIZE],
+        };
+        rng.fill_bytes(&mut key.bytes);
+        key
+    }
+
     pub fn sign(&self, message: &[u8]) -> Signature {
         let private_scalar = self.derive_scalar();
         let public_point_compressed = (&private_scalar * &RISTRETTO_BASEPOINT_TABLE).compress();
@@ -153,5 +161,39 @@ impl<'a> TryFrom<&'a [u8]> for PublicKey {
             return Err(Error::InvalidPublicKey);
         }
         Ok(Self(decompressed))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rand_core::OsRng;
+
+    #[test]
+    fn test_signing_message_verifies() {
+        let message = b"hello world";
+        let private_key = PrivateKey::random(&mut OsRng);
+        let public_key = private_key.public_key();
+        let signature = private_key.sign(message);
+        assert!(public_key.verify(&signature, message).is_ok());
+    }
+
+    #[test]
+    fn test_signing_message_does_not_verify_with_different_message() {
+        let message1 = b"hello world";
+        let message2 = b"bonjour monde";
+        let private_key = PrivateKey::random(&mut OsRng);
+        let public_key = private_key.public_key();
+        let signature = private_key.sign(message1);
+        assert!(public_key.verify(&signature, message2).is_err());
+    }
+
+    #[test]
+    fn test_signing_message_does_not_verify_with_different_key() {
+        let message = b"hello world";
+        let private_key = PrivateKey::random(&mut OsRng);
+        let public_key = PrivateKey::random(&mut OsRng).public_key();
+        let signature = private_key.sign(message);
+        assert!(public_key.verify(&signature, message).is_err());
     }
 }
