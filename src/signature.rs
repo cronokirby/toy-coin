@@ -16,15 +16,11 @@ impl HashRng {
 
 impl RngCore for HashRng {
     fn next_u32(&mut self) -> u32 {
-        let mut bytes = [0; 4];
-        self.fill_bytes(&mut bytes);
-        u32::from_le_bytes(bytes)
+        rand_core::impls::next_u32_via_fill(self)
     }
 
     fn next_u64(&mut self) -> u64 {
-        let mut bytes = [0; 8];
-        self.fill_bytes(&mut bytes);
-        u64::from_le_bytes(bytes)
+        rand_core::impls::next_u64_via_fill(self)
     }
 
     fn fill_bytes(&mut self, dest: &mut [u8]) {
