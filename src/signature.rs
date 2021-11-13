@@ -6,10 +6,14 @@ use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_TABLE, ristretto::Compress
 use rand_core::{CryptoRng, RngCore};
 use subtle::ConstantTimeEq;
 
+/// This lets us use the XOF output from our hash function as a source of randomness.
 struct HashRng(blake3::OutputReader);
 
 impl HashRng {
-    fn new(hasher: blake3::Hasher) -> Self {
+    /// create a new HashRng from a blake3 hasher.
+    ///
+    /// This will finalize the hasher itself, creating the XOF.
+    pub fn new(hasher: blake3::Hasher) -> Self {
         HashRng(hasher.finalize_xof())
     }
 }
@@ -37,18 +41,28 @@ impl RngCore for HashRng {
 /// we're cryptographically secure.
 impl CryptoRng for HashRng {}
 
+/// This represents the kind of Error that can happen when signing.
 pub enum Error {
+    /// An invalid public key was found when deserializing.
     InvalidPublicKey,
+    /// A signature failed to verify, for some reason.
+    ///
+    /// We intentionally provide minimal detail on why this signature failed, to
+    /// thwart any attacks using this extra information.
     InvalidSignature,
 }
 
+/// The number of bytes in a private key.
 const PRIVATE_KEY_SIZE: usize = 32;
+/// The number of bytes in a public key.
 const PUBLIC_KEY_SIZE: usize = 32;
+/// The number of bytes in a signature.
 const SIGNATURE_SIZE: usize = 64;
 
 /// PrivateKey represents the key used for generating signatures.
 ///
-/// This key should not be shared with anyone else.
+/// This key should not be shared with anyone else. Doing so will allow them
+/// to create signatures with this key.
 #[derive(Clone)]
 pub struct PrivateKey {
     /// bytes holds the raw data of our private key.
@@ -58,16 +72,19 @@ pub struct PrivateKey {
     bytes: [u8; PRIVATE_KEY_SIZE],
 }
 
+// We use different contexts to disambiguate different instance of key derivation.
 const DERIVE_HASHING_KEY_CONTEXT: &'static str = "toy-coin 2021-11-11 derive hashing key";
 const DERIVE_SCALAR_CONTEXT: &'static str = "toy-coin 2021-11-11 derive scalar";
 
 impl PrivateKey {
+    /// derive the private scalar associated with this seed.
     fn derive_scalar(&self) -> Scalar {
         let mut hasher = blake3::Hasher::new_derive_key(DERIVE_SCALAR_CONTEXT);
         hasher.update(&self.bytes);
         Scalar::random(&mut HashRng::new(hasher))
     }
 
+    /// create a new PrivateKey from randomness.
     pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
         let mut key = PrivateKey {
             bytes: [0; PRIVATE_KEY_SIZE],
@@ -76,6 +93,10 @@ impl PrivateKey {
         key
     }
 
+    /// create a signature over a given message.
+    ///
+    /// This signature can be independently verified by anyone with the public key.
+    /// The signature will fail to verify with a different public key, or with a different message.
     pub fn sign(&self, message: &[u8]) -> Signature {
         let private_scalar = self.derive_scalar();
         let public_point_compressed = (&private_scalar * &RISTRETTO_BASEPOINT_TABLE).compress();
