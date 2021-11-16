@@ -53,13 +53,13 @@ pub enum Error {
 }
 
 /// The number of bytes in a private key.
-const PRIVATE_KEY_SIZE: usize = 32;
+pub const PRIVATE_KEY_SIZE: usize = 32;
 /// The number of bytes in a public key.
-const PUBLIC_KEY_SIZE: usize = 32;
+pub const PUBLIC_KEY_SIZE: usize = 32;
 // The number of bytes in the hedge factor for signatures.
 const HEDGE_SIZE: usize = 32;
 /// The number of bytes in a signature.
-const SIGNATURE_SIZE: usize = 64;
+pub const SIGNATURE_SIZE: usize = 64;
 
 /// PrivateKey represents the key used for generating signatures.
 ///
