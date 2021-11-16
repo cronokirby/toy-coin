@@ -56,6 +56,8 @@ pub enum Error {
 const PRIVATE_KEY_SIZE: usize = 32;
 /// The number of bytes in a public key.
 const PUBLIC_KEY_SIZE: usize = 32;
+// The number of bytes in the hedge factor for signatures.
+const HEDGE_SIZE: usize = 32;
 /// The number of bytes in a signature.
 const SIGNATURE_SIZE: usize = 64;
 
@@ -97,15 +99,24 @@ impl PrivateKey {
     ///
     /// This signature can be independently verified by anyone with the public key.
     /// The signature will fail to verify with a different public key, or with a different message.
-    pub fn sign(&self, message: &[u8]) -> Signature {
+    ///
+    /// Randomness is passed for hedged signatures. This provides additional security
+    /// against fault attacks, compared to plain deterministic signatures.
+    pub fn sign<R: RngCore + CryptoRng>(&self, rng: &mut R, message: &[u8]) -> Signature {
         let private_scalar = self.derive_scalar();
         let public_point_compressed = (&private_scalar * &RISTRETTO_BASEPOINT_TABLE).compress();
 
         let hashing_key: [u8; blake3::KEY_LEN] =
             blake3::derive_key(DERIVE_HASHING_KEY_CONTEXT, &self.bytes);
+        // To generate our random Scalar, we rely on either the integrity of the hash computation,
+        // in which case bad randomness is fine, or the integrity of the randomness, in which case
+        // faulting the hash function is ok.
+        let mut hedge = [0; HEDGE_SIZE];
+        rng.fill_bytes(&mut hedge);
         let surprise = Scalar::random(&mut HashRng::new(
             blake3::Hasher::new_keyed(&hashing_key)
                 .update(message)
+                .update(&hedge)
                 .to_owned(),
         ));
         let surprise_point_compressed = (&surprise * &RISTRETTO_BASEPOINT_TABLE).compress();
@@ -191,7 +202,7 @@ mod test {
         let message = b"hello world";
         let private_key = PrivateKey::random(&mut OsRng);
         let public_key = private_key.public_key();
-        let signature = private_key.sign(message);
+        let signature = private_key.sign(&mut OsRng, message);
         assert!(public_key.verify(&signature, message).is_ok());
     }
 
@@ -201,7 +212,7 @@ mod test {
         let message2 = b"bonjour monde";
         let private_key = PrivateKey::random(&mut OsRng);
         let public_key = private_key.public_key();
-        let signature = private_key.sign(message1);
+        let signature = private_key.sign(&mut OsRng, message1);
         assert!(public_key.verify(&signature, message2).is_err());
     }
 
@@ -210,7 +221,7 @@ mod test {
         let message = b"hello world";
         let private_key = PrivateKey::random(&mut OsRng);
         let public_key = PrivateKey::random(&mut OsRng).public_key();
-        let signature = private_key.sign(message);
+        let signature = private_key.sign(&mut OsRng, message);
         assert!(public_key.verify(&signature, message).is_err());
     }
 }
